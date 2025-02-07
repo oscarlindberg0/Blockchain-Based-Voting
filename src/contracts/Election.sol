@@ -6,6 +6,7 @@ contract Election {
     string public name;
     uint public candidatesCount = 0;
     address public owner;
+    bool public electionStarted = false;
     mapping(uint => Candidate) public candidates;
 
     struct Candidate {
@@ -30,11 +31,15 @@ contract Election {
         _;
     }
 
-    function registerCandidate(string memory _name, string memory _party) public onlyOwner {
+    function registerCandidate(string memory _name, string memory _party) public {
+        // check if election is started
+        require(electionStarted, "Election needs to be started in order to vote");
+
+        require(msg.sender == owner, "Only the owner can register candidates");
 
         // check for valid name and party name
-        require(bytes(_name).length > 0);
-        require(bytes(_party).length > 0);
+        require(bytes(_name).length > 0, "Candidate name required");
+        require(bytes(_party).length > 0, "Party name required");
 
         // add to list of candidates
         candidates[candidatesCount] = Candidate(candidatesCount, 0, _name, _party);
@@ -45,6 +50,9 @@ contract Election {
     }
 
     function vote(uint _id) public {
+        // check if election is started
+        require(electionStarted, "Election needs to be started in order to vote");
+
         // check for valid id
         require(_id >= 0 && _id < candidatesCount);
 
@@ -60,6 +68,23 @@ contract Election {
 
         Candidate memory c = candidates[_id];
         return (c.name, c.votes);
+    }
+
+    function clearCandidates() public {
+    for (uint i = 1; i <= candidatesCount; i++) {
+        delete candidates[i]; 
+    }
+    candidatesCount = 0; 
+}
+
+
+    function startElection() public {
+        electionStarted = true;
+    }
+
+    function endElection() public {
+        electionStarted = false;
+        clearCandidates();
     }
 
     constructor () public {

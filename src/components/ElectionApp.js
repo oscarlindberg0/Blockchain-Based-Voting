@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Web3 from "web3";
 import ElectionContract from "../abis/Election.json";
-import { Container, TextField, Button, Typography, List, ListItem, ListItemText } from "@mui/material";
+import { Container, TextField, Button, Typography, List, ListItem, ListItemText, Stack } from "@mui/material";
 
 const ElectionApp = () => {
   const [web3, setWeb3] = useState(null);
@@ -51,25 +51,61 @@ const ElectionApp = () => {
   };
 
   const registerCandidate = async () => {
+    if (!contract) {
+        console.error("Smart contract is not initialized. Try refreshing the page.");
+        return;
+    }
     if (name && party) {
       await contract.methods.registerCandidate(name, party).send({ from: account });
       setName("");
       setParty("");
       loadCandidates(contract);
+      console.log("Candidate " + name + " of the " + party + " party registered")
     }
   };
+
+  const checkElectionStatus = async () => {
+    if (contract) {
+      const status = await contract.methods.electionStarted().call();
+      console.log("Election Started:", status);
+      return status;
+    }
+  };  
 
   const voteForCandidate = async (id) => {
     await contract.methods.vote(id).send({ from: account });
     loadCandidates(contract);
   };
 
+  const toggleElection = async () => {
+    if (!contract) {
+        console.error("Smart contract is not initialized.");
+        return;
+    }
+    try {
+        const electionStatus = await contract.methods.electionStarted().call();
+        if (electionStatus) {
+          await contract.methods.endElection().send({ from: account });
+          console.log("Election ended");
+        } else {
+          await contract.methods.startElection().send({ from: account });
+          console.log("Election started");
+        }
+      } 
+      catch (error) {
+        console.error("Transaction failed: ", error);
+    }
+}
+
   return (
     <Container maxWidth="sm">
       <Typography variant="h4" gutterBottom>Election DApp - Owner</Typography>
       <TextField label="Candidate Name" value={name} onChange={(e) => setName(e.target.value)} fullWidth margin="normal" />
       <TextField label="Party" value={party} onChange={(e) => setParty(e.target.value)} fullWidth margin="normal" />
-      <Button variant="contained" color="primary" onClick={registerCandidate}>Register Candidate</Button>
+      <Stack direction="row" spacing={10} justifyContent="center">
+        <Button variant="contained" color="primary" onClick={registerCandidate}>Register Candidate</Button>
+        <Button variant="contained" color="primary" onClick={toggleElection}>{checkElectionStatus() ? "End election" : "Start election"}</Button>
+        </Stack>
       <Typography variant="h5" gutterBottom style={{ marginTop: "20px" }}>Candidates</Typography>
       <List>
         {candidates.map((candidate, index) => (
