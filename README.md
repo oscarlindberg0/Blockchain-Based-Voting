@@ -6,9 +6,8 @@ This is a **blockchain-based voting application** built using Solidity, Truffle,
 
 ## Features
 -  Register candidates (admin-only)
--  Vote for a candidate (one vote per person)
+-  Vote for a candidate
 -  View live election results
--  Prevent duplicate voting
 
 ---
 
