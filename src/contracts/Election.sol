@@ -32,8 +32,6 @@ contract Election {
     }
 
     function registerCandidate(string memory _name, string memory _party) public {
-        // check if election is started
-        require(electionStarted, "Election needs to be started in order to vote");
 
         require(msg.sender == owner, "Only the owner can register candidates");
 

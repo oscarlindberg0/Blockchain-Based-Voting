@@ -10,6 +10,7 @@ const ElectionApp = () => {
   const [candidates, setCandidates] = useState([]);
   const [name, setName] = useState("");
   const [party, setParty] = useState("");
+  const [electionStarted, setElectionStarted] = useState(false);
   const webSocketProvider = new Web3.providers.WebsocketProvider("ws://127.0.0.1:7545");
 
   useEffect(() => {
@@ -134,6 +135,7 @@ const ElectionApp = () => {
             setName("");
             setParty("");
             console.log("Candidate " + name + " of the " + party + " party registered")
+            loadCandidates(contract);
         } catch (error) {
             console.error("Transaction failed: ", error);
         }
@@ -150,6 +152,8 @@ const ElectionApp = () => {
 
   const voteForCandidate = async (id) => {
     if (!contract)
+        return;
+    if (!electionStarted)
         return;
 
     try{
@@ -182,14 +186,15 @@ const ElectionApp = () => {
         return;
     }
     try {
-        const electionStatus = await contract.methods.electionStarted().call();
-        if (electionStatus) {
+        if (electionStarted) {
           await contract.methods.endElection().send({ from: account, gas: 3000000 });
           console.log("Election ended");
         } else {
           await contract.methods.startElection().send({ from: account, gas: 3000000 });
           console.log("Election started");
         }
+        setElectionStarted(!electionStarted);
+        console.log("Election started: ", electionStarted);
       } 
       catch (error) {
         console.error("Transaction failed: ", error);
@@ -209,7 +214,7 @@ const ElectionApp = () => {
       <TextField label="Party" value={party} onChange={(e) => setParty(e.target.value)} fullWidth margin="normal" />
       <Stack direction="row" spacing={10} justifyContent="center">
         <Button variant="contained" color="primary" onClick={registerCandidate}>Register Candidate</Button>
-        <Button variant="contained" color="primary" onClick={toggleElection}>{checkElectionStatus() ? "End election" : "Start election"}</Button>
+        <Button variant="contained" color="primary" onClick={toggleElection}>{electionStarted ? "End election" : "Start election"}</Button>
         </Stack>
       <Typography variant="h5" gutterBottom style={{ marginTop: "20px" }}>Candidates</Typography>
       <List>
