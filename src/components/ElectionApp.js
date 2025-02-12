@@ -10,12 +10,15 @@ const ElectionApp = () => {
   const [candidates, setCandidates] = useState([]);
   const [name, setName] = useState("");
   const [party, setParty] = useState("");
+  const webSocketProvider = new Web3.providers.WebsocketProvider("ws://127.0.0.1:7545");
 
   useEffect(() => {
     const initWeb3 = async () => {
       if (window.ethereum) {
         const web3Instance = new Web3(window.ethereum);
+
         await window.ethereum.request({ method: "eth_requestAccounts" });
+        console.log("MetaMask Accounts:", await window.ethereum.request({ method: "eth_accounts" }));
 
         const accounts = await web3Instance.eth.getAccounts();
         const networkId = await web3Instance.eth.net.getId();
@@ -28,7 +31,7 @@ const ElectionApp = () => {
 
         const contractInstance = new web3Instance.eth.Contract(
           ElectionContract.abi,
-          deployedNetwork && deployedNetwork.address
+          deployedNetwork.address
         );
 
         setWeb3(web3Instance);
@@ -38,16 +41,84 @@ const ElectionApp = () => {
       }
     };
     initWeb3();
+
+    if(contract){
+        contract.events.CandidateRegistered({}, async (error, event) => {
+            if (!error){
+                console.log("New candidate registered", event.returnValues);
+                await loadCandidates(contract);
+            } else {
+                console.error("Event error: ", error);
+            }
+        });
+
+        contract.events.Voted({}, async (error, event) => {
+            if (!error){
+                console.log("Vote registereed", event.returnValues);
+                await loadCandidates(contract);
+            } else {
+                console.error("Event error: ", error);
+            }
+        });
+    }
+
+  }, []);
+
+  // socket connection to listen for events from smart contract
+  useEffect(() => {
+    if (contract) {
+
+      const web3Socket = new Web3(webSocketProvider);
+  
+      const socketContract = new web3Socket.eth.Contract(
+        ElectionContract.abi,
+        contract.options.address
+      );
+  
+      socketContract.events.CandidateRegistered({}, async (error, event) => {
+        if (!error) {
+          console.log("New candidate registered", event.returnValues);
+          await loadCandidates(contract);
+        } else {
+          console.error("Event error:", error);
+        }
+      });
+      socketContract.events.Voted({}, async (error, event) => {
+        if(!error){
+            console.log("Voted", event.returnValues);
+            await loadCandidates(contract);
+        } else {
+            console.error("Event error:", error);
+        }
+      });
+    }
+  }, [contract]);
+
+  // close socket connection
+  useEffect(() => {
+    const web3Socket = new Web3(webSocketProvider);
+  
+    return () => {
+      web3Socket.currentProvider.disconnect();
+    };
   }, []);
 
   const loadCandidates = async (contractInstance) => {
-    const candidatesCount = await contractInstance.methods.candidatesCount().call();
-    const candidatesArray = [];
-    for (let i = 1; i <= candidatesCount; i++) {
-      const candidate = await contractInstance.methods.candidates(i).call();
-      candidatesArray.push(candidate);
+
+    try {
+        const candidatesCount = await contractInstance.methods.candidatesCount().call();
+        const candidatesArray = [];
+        if (candidatesCount === 0)
+            return;
+        for (let i = 1; i <= candidatesCount; i++) {
+            const candidate = await contractInstance.methods.candidates(i).call();
+            candidatesArray.push({id: candidate.id, votes: candidate.voteCount, name: candidate.name, party: candidate.party});
+        }
+        setCandidates([...candidatesArray]);
+        console.log("loaded candidates");
+    } catch (error) {
+        console.error("Could not load candidates: ", error);
     }
-    setCandidates(candidatesArray);
   };
 
   const registerCandidate = async () => {
@@ -56,12 +127,17 @@ const ElectionApp = () => {
         return;
     }
     if (name && party) {
-      await contract.methods.registerCandidate(name, party).send({ from: account });
-      setName("");
-      setParty("");
-      loadCandidates(contract);
-      console.log("Candidate " + name + " of the " + party + " party registered")
-    }
+        try {
+            console.log("Registering candidate:", name, party);
+            await contract.methods.registerCandidate(name, party)
+            .send({ from: account, gas: 3000000 }); // high gas limit for testing purposes
+            setName("");
+            setParty("");
+            console.log("Candidate " + name + " of the " + party + " party registered")
+        } catch (error) {
+            console.error("Transaction failed: ", error);
+        }
+    } 
   };
 
   const checkElectionStatus = async () => {
@@ -73,8 +149,31 @@ const ElectionApp = () => {
   };  
 
   const voteForCandidate = async (id) => {
-    await contract.methods.vote(id).send({ from: account });
-    loadCandidates(contract);
+    if (!contract)
+        return;
+
+    try{
+        await contract.methods.vote(id)
+            .send({ from: account, gas: 3000000 })
+            .on('transactionHash', function(hash){
+                console.log("Transaction Hash:", hash); // ✅ Debugging Line
+            })
+            .on('receipt', function(receipt){
+                console.log("Transaction Receipt:", receipt); // ✅ Debugging Line
+            })
+            .on('confirmation', function(confirmationNumber, receipt){
+                console.log("Transaction Confirmed:", confirmationNumber); // ✅ Debugging Line
+            })
+            .on('error', function(error){
+                console.error("Transaction Error:", error); // ✅ Debugging Line
+            });
+        console.log("Voted for:", id);
+
+        // refresh candidate list
+        await loadCandidates(contract);
+    } catch (error) {
+        console.error("Voting failed: ", error);
+    }
   };
 
   const toggleElection = async () => {
@@ -85,17 +184,23 @@ const ElectionApp = () => {
     try {
         const electionStatus = await contract.methods.electionStarted().call();
         if (electionStatus) {
-          await contract.methods.endElection().send({ from: account });
+          await contract.methods.endElection().send({ from: account, gas: 3000000 });
           console.log("Election ended");
         } else {
-          await contract.methods.startElection().send({ from: account });
+          await contract.methods.startElection().send({ from: account, gas: 3000000 });
           console.log("Election started");
         }
       } 
       catch (error) {
         console.error("Transaction failed: ", error);
+        }
     }
-}
+
+    const clearCandidates = async () => {
+        await contract.methods.clearCandidates().send({ from: account, gas: 3000000 });
+        loadCandidates(contract);
+        console.log("Cleared candidates");
+    }
 
   return (
     <Container maxWidth="sm">
@@ -115,6 +220,7 @@ const ElectionApp = () => {
           </ListItem>
         ))}
       </List>
+      <Button variant="contained" color="primary" onClick={clearCandidates}>{"Clear candidates"}</Button>
     </Container>
   );
 };

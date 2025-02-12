@@ -6,7 +6,7 @@ contract Election {
     string public name;
     uint public candidatesCount = 0;
     address public owner;
-    bool public electionStarted = false;
+    bool public electionStarted = true;
     mapping(uint => Candidate) public candidates;
 
     struct Candidate {
@@ -50,6 +50,7 @@ contract Election {
     }
 
     function vote(uint _id) public {
+
         // check if election is started
         require(electionStarted, "Election needs to be started in order to vote");
 
@@ -71,7 +72,7 @@ contract Election {
     }
 
     function clearCandidates() public {
-    for (uint i = 1; i <= candidatesCount; i++) {
+    for (uint i = 0; i < candidatesCount; i++) {
         delete candidates[i]; 
     }
     candidatesCount = 0; 
